@@ -1,7 +1,11 @@
-EXECUTABLE	:= network-communication
+EXECUTABLE_SERVER	:= tcp_server
+EXECUTABLE_CLIENT := tcp_client
 
-$(EXECUTABLE):
-	g++ -g -Wall -std=c++17 -o $(EXECUTABLE) $(EXECUTABLE).cpp 
+main: $(EXECUTABLE_CLIENT).cpp $(EXECUTABLE_SERVER).cpp
+	g++ -g -Wall -std=c++17 -o $(EXECUTABLE_SERVER) $(EXECUTABLE_SERVER).cpp 
+	g++ -g -Wall -std=c++17 -o $(EXECUTABLE_CLIENT) $(EXECUTABLE_CLIENT).cpp
 
 clean:
-	-rm $(EXECUTABLE)
+	-rm $(EXECUTABLE_SERVER)
+	-rm $(EXECUTABLE_CLIENT)
+
