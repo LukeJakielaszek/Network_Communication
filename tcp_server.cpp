@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <unistd.h>
 
 // custom scripts
 #include "server_util.h"
@@ -11,6 +12,7 @@ int main(int argc, char ** argv){
 
     if(argc != 3){
         printf("ERROR: Invalid number of arguments [%d]\n", argc);
+        printf("\t./tcp_server port_to_listen_on file_directory\n");
         return -1;
     }
 
@@ -60,5 +62,16 @@ int main(int argc, char ** argv){
         } else {
             printf("accepted connection from %s:%s\n", clientName, clientPort);
         }
+
+        // read from the current client
+        char buffer[1024];
+        int valread = read(connectedfd, buffer, 1024); 
+        buffer[valread] = '\0';
+        printf("[%d] : [%s]\n", valread, buffer);
+
+        // send file via response
+        std::string test = "response";
+        send(connectedfd, test.c_str() , test.size(), 0 ); 
+        printf("response message sent\n"); 
     }
 }
