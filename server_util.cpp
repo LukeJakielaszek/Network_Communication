@@ -4,6 +4,9 @@
 #include <netdb.h>
 #include <stdlib.h>
 #include <sys/socket.h>
+#include <map>
+#include <string>
+#include <iostream>
 
 #define BACKLOG 10
 
@@ -11,7 +14,27 @@
 #define EXIT_BIND_FAILURE 3
 #define EXIT_LISTEN_FAILURE 4
 
+using namespace std;
+
 int getlistenfd(char *port);
+map<string, char*>& get_init_map();
+
+// returns an empty map to be used for cache allocated on heap
+map<string, char*>& get_init_map(){
+  map<string, char*> *ret_map;
+
+  // try to create the map
+  try{
+    ret_map = new map<string, char*>();
+  }catch(bad_alloc &error){
+    cerr << error.what() << endl;
+    cout << "ERROR: Unable to allocate initialization map\n" << endl;
+    exit(-1);
+  }
+
+  // return the allocated map
+  return *ret_map;
+}
 
 // gets listener file descriptor from port number
 int getlistenfd(char *port){

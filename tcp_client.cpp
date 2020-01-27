@@ -4,8 +4,10 @@
 // custom scripts
 #include "client_util.h"
 
+using namespace std;
+
 int main(int argc, char ** argv){
-    std::cout << "CLIENT" << std::endl;
+    cout << "CLIENT" << endl;
 
     if(argc != 5){
         printf("ERROR: Invalid number of arguments [%d]\n", argc);
@@ -13,10 +15,10 @@ int main(int argc, char ** argv){
         return -1;
     }
 
-    std::string server_host = argv[1];
-    std::string server_port = argv[2];
-    std::string file_name = argv[3];
-    std::string directory = argv[4];
+    string server_host = argv[1];
+    string server_port = argv[2];
+    string file_name = argv[3];
+    string directory = argv[4];
 
     int connected_socket = connect_to_server(atoi(server_port.c_str()), server_host.c_str());
 

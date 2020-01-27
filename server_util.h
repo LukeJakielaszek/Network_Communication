@@ -7,7 +7,13 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/socket.h>
+#include <map>
+#include <iostream>
+#include <string>
+
+using namespace std;
 
 int getlistenfd(char *port);
+map<string, char*>& get_init_map();
 
 #endif /** SERVER_UTIL_H */
