@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <fstream>
 
 // custom scripts
 #include "client_util.h"
@@ -34,13 +35,29 @@ int main(int argc, char ** argv){
     // buffer to incrementally store server response
     char buffer[BUFFSIZE];
 
-    int valread;
-    do{
-        // receive file from the connected socket
-        valread = read(connected_socket, buffer, BUFFSIZE-1);
-        buffer[valread] = '\0';
-        printf("[%d] : [%s]\n", valread, buffer);
+    // absolute path to file for client
+    string absolute_path = directory + "/" + file_name;
 
-        file_size -= valread;
-    }while(file_size > 0);
+    // open the output file
+    ofstream out_file;
+    out_file.open(absolute_path, ios::out | ios::binary | ios::trunc);
+
+    if(out_file.is_open()){
+        // output file successfully open
+        do{
+            // receive file from the connected socket
+            int valread = read(connected_socket, buffer, BUFFSIZE-1);
+            buffer[valread] = '\0';
+            printf("[%d] : [%s]\n", valread, buffer);
+            out_file.write(buffer, valread);
+
+            // decrement the number of bytes left to read
+            file_size -= valread;
+        }while(file_size > 0);
+    }else{
+        // output file failed to open
+        printf("ERROR: Failed to open [%s]\n", absolute_path.c_str());
+    }
+
+    out_file.close();
 }
