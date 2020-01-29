@@ -6,6 +6,8 @@
 
 using namespace std;
 
+const int BUFFSIZE = 1024;
+
 int main(int argc, char ** argv){
     if(argc != 5){
         printf("ERROR: Invalid number of arguments [%d]\n", argc);
@@ -24,12 +26,21 @@ int main(int argc, char ** argv){
     send(connected_socket , file_name.c_str(), file_name.size(), 0); 
     printf("request message sent [%s]\n", file_name.c_str()); 
 
-    // read the server response
-    char buffer[1024];
+    unsigned long long int file_size;
+    read(connected_socket, &file_size, sizeof(file_size));
+
+    cout << "FILE SIZE [" << file_size << "]" << endl;
+
+    // buffer to incrementally store server response
+    char buffer[BUFFSIZE];
+
     int valread;
     do{
-        valread = read(connected_socket, buffer, 1023);
+        // receive file from the connected socket
+        valread = read(connected_socket, buffer, BUFFSIZE-1);
         buffer[valread] = '\0';
         printf("[%d] : [%s]\n", valread, buffer);
-    }while(valread > 0);
+
+        file_size -= valread;
+    }while(file_size > 0);
 }

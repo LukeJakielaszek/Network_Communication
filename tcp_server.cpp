@@ -24,7 +24,7 @@ bool update_cache(const string &file_name, ifstream &client_file, Cache &cache);
 int get_file_size(ifstream &client_file);
 Cache* init_cache();
 bool check_cache(const string &file_name, Cache &cache);
-bool send_from_disk(const int &client_socket, ifstream &client_file);
+bool send_from_disk(const int &client_socket, ifstream &client_file, string &absolute_path);
 int make_room_LRU(Cache &cache, int client_file_size);
 void remove_cache_file(string &file_name, Cache &cache);
 
@@ -118,7 +118,7 @@ int main(int argc, char ** argv){
                 // update cache with file
                 if(!update_cache(buffer, client_file, *cache)){
                     // file is too large for cache, read and send file from disk directly
-                    send_from_disk(connectedfd, client_file);
+                    send_from_disk(connectedfd, client_file, absolute_path);
 
                     continue;
                 }
@@ -133,6 +133,8 @@ int main(int argc, char ** argv){
                 string message = file_message_a + buffer + file_message_b;
 
                 // send DNE message to client
+                unsigned long long int response_size = message.size();
+                send(connectedfd, &response_size, sizeof(response_size), 0);
                 send(connectedfd, message.c_str(), message.size(), 0);
 
                 client_file.close();
@@ -146,17 +148,20 @@ int main(int argc, char ** argv){
         // file found within cache
         auto content_iter = cache->contents->find(buffer);
         auto size_iter = cache->sizes->find(buffer);
-        auto time_iter = cache->times->find(buffer);
-        time_iter->second = 
 
-        // send the file directly
+        // send the file from cache
+        unsigned long long int response_size = size_iter->second;
+        send(connectedfd, &response_size, sizeof(response_size), 0);
         send(connectedfd, content_iter->second, size_iter->second, 0);
     }
 }
 
 // read and send file directly from disk
-bool send_from_disk(const int &client_socket, ifstream &client_file){
+bool send_from_disk(const int &client_socket, ifstream &client_file, string &absolute_path){
     cout << "Sending file directly from disk" << endl;
+
+    unsigned long long int response_size = get_file_size(client_file);
+    send(client_socket, &response_size, sizeof(response_size), 0);
 
     char buffer[BUFFSIZE];
     while(client_file){
