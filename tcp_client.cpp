@@ -7,8 +7,6 @@
 using namespace std;
 
 int main(int argc, char ** argv){
-    cout << "CLIENT" << endl;
-
     if(argc != 5){
         printf("ERROR: Invalid number of arguments [%d]\n", argc);
         printf("\t./tcp_client server_host server_port file_name directory\n");
