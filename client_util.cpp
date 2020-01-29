@@ -26,7 +26,7 @@ int connect_to_server(int port, const char *ip_address){
     if (connect(client_socket, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) 
     { 
         printf("ERROR: Failed to connect to server\n"); 
-        return -1; 
+        return -1;
     } 
 
     return client_socket;

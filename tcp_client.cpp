@@ -26,6 +26,10 @@ int main(int argc, char ** argv){
 
     // read the server response
     char buffer[1024];
-    int valread = read(connected_socket, buffer, 1024); 
-    printf("[%d] : [%s]\n", valread, buffer);
+    int valread;
+    do{
+        valread = read(connected_socket, buffer, 1023);
+        buffer[valread] = '\0';
+        printf("[%d] : [%s]\n", valread, buffer);
+    }while(valread > 0);
 }
