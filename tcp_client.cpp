@@ -59,5 +59,6 @@ int main(int argc, char ** argv){
         printf("ERROR: Failed to open [%s]\n", absolute_path.c_str());
     }
 
+    close(connected_socket);
     out_file.close();
 }

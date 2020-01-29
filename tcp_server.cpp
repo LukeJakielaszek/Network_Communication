@@ -138,6 +138,7 @@ int main(int argc, char ** argv){
                 send(connectedfd, message.c_str(), message.size(), 0);
 
                 client_file.close();
+                close(connectedfd);
 
                 continue;
             }
@@ -153,6 +154,8 @@ int main(int argc, char ** argv){
         unsigned long long int response_size = size_iter->second;
         send(connectedfd, &response_size, sizeof(response_size), 0);
         send(connectedfd, content_iter->second, size_iter->second, 0);
+
+        close(connectedfd);
     }
 }
 
@@ -171,6 +174,7 @@ bool send_from_disk(const int &client_socket, ifstream &client_file, string &abs
     }
 
     client_file.close();
+    close(client_socket);
 
     return true;
 }
