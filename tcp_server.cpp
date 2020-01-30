@@ -46,8 +46,11 @@ void remove_cache_file(string &file_name, Cache &cache);
 // Buffer size for reading file
 const int BUFFSIZE = 100;
 
+// indicator for a file which does not exist
+long long int DNE_FILE = -9999;
+
 // set max size to 64 MB
-const int MAX_CACHE_SIZE = 2000;//64*1048576;
+const int MAX_CACHE_SIZE = 64*1048576;
 
 // start time of the program (used for LRU cache implementation)
 chrono::_V2::system_clock::time_point START_TIME;
@@ -91,8 +94,6 @@ int main(int argc, char ** argv){
         // get size of client
         client_size = sizeof(client_address);
 
-        printf("Attempting to connect...\n");
-
         // attempt to connect to a client
         connectedfd = accept(listenfd, (struct sockaddr*)&client_address, &client_size);
 
@@ -102,15 +103,11 @@ int main(int argc, char ** argv){
             continue;
         }
 
-        printf("Connected\n");
-
         // gets information about client
         if (getnameinfo((struct sockaddr*)&client_address, client_size,
                 clientName, BUFFSIZE, clientPort, BUFFSIZE, 0)!=0) {
             fprintf(stderr, "error getting name information about client\n");
             continue;
-        } else {
-            printf("accepted connection from %s:%s\n", clientName, clientPort);
         }
 
         // read the initial request from the current client
@@ -128,6 +125,9 @@ int main(int argc, char ** argv){
         // construct the absolute path to the file
         string file_delim = "/";
         string absolute_path = file_directory + file_delim + buffer;
+        
+        // display terminal message
+        printf("Client %s:%s is requesting file [%s]\n", clientName, clientPort, absolute_path.c_str());
 
         // check if file is within cache
         if(!check_cache(buffer, *cache)){
@@ -139,6 +139,8 @@ int main(int argc, char ** argv){
 
             if(client_file.is_open()){
                 // file exists
+                printf("\tCache miss. File [%s] sent to the client\n", buffer);
+
                 // update cache with file
                 if(!update_cache(buffer, client_file, *cache)){
                     // file is too large for cache, read and send file from disk directly
@@ -149,25 +151,13 @@ int main(int argc, char ** argv){
 
             }else{
                 // file does not exist
-                printf("File [%s] does not exist.\n", buffer);
+                printf("\tFile [%s] does not exist.\n", buffer);
 
-                // construct file DNE message
-                string file_message_a = "File [";
-                string file_message_b = "] does not exist.\n";
-                string message = file_message_a + buffer + file_message_b;
+                // construct DNE message to client
+                long long int DNE_response = DNE_FILE;
 
-                // send DNE message to client
-                unsigned long long int response_size = message.size();
-
-                if(send(connectedfd, &response_size, sizeof(response_size), 0) < 0){
-                    printf("ERROR: Failed to send client size of DNE message\n");
-                    client_file.close();
-                    close(connectedfd);
-
-                    continue;
-                }
-
-                if(send(connectedfd, message.c_str(), message.size(), 0) < 0){
+                // send client the DNE message
+                if(send(connectedfd, &DNE_response, sizeof(DNE_response), 0) < 0){
                     printf("ERROR: Failed to send client DNE message\n");
                     client_file.close();
                     close(connectedfd);
@@ -194,7 +184,7 @@ int main(int argc, char ** argv){
         }
 
         // send the file from cache
-        unsigned long long int response_size = size_iter->second;
+        long long int response_size = size_iter->second;
         
         // send the cached file's size to client
         if(send(connectedfd, &response_size, sizeof(response_size), 0) < 0){
@@ -214,10 +204,8 @@ int main(int argc, char ** argv){
 
 // read and send file directly from disk
 bool send_from_disk(const int &client_socket, ifstream &client_file, string &absolute_path){
-    cout << "Sending file directly from disk" << endl;
-
     // get the total size of the file
-    unsigned long long int response_size = get_file_size(client_file);
+    long long int response_size = get_file_size(client_file);
 
     // send client the size of file
     if(send(client_socket, &response_size, sizeof(response_size), 0) < 0){
@@ -301,7 +289,7 @@ bool check_cache(const string &file_name, Cache &cache){
         // if not found return false
         return false;
     }else{
-        printf("Cache hit. File [%s] sent to the client\n", file_name.c_str());
+        printf("\tCache hit. File [%s] sent to the client\n", file_name.c_str());
 
         // get the end execution time
 	    auto check_time = chrono::high_resolution_clock::now();
@@ -329,21 +317,15 @@ bool update_cache(const string &file_name, ifstream &client_file, Cache &cache){
 
     if(file_size > MAX_CACHE_SIZE){
         // file is too large for our cache
-        printf("File [%s] is too large for cache\n", file_name.c_str());
-
         // indicate size limitation
         return false;
     }else if(cache.total_size + file_size > MAX_CACHE_SIZE){
-        // remove files from cache until there is enough space available
-        printf("Removing files for [%s] to be inserted into cache\n", file_name.c_str());
-
+        // file can fit in cache if older files are removed
         // Remove files to allow space according to least recently used
         make_room_LRU(cache, file_size);
     }
 
-    // insert file into our cache
-    printf("Inserting [%s] into cache\n", file_name.c_str());
-
+    // file can now fit directly into cache
     // increment the total size of our cache
     cache.total_size+=file_size;
 

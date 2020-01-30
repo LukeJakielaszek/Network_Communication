@@ -10,6 +10,9 @@ using namespace std;
 // read size for socket
 const int BUFFSIZE = 1024;
 
+// indicator for a file which does not exist
+long long int DNE_FILE = -9999;
+
 int main(int argc, char ** argv){
     if(argc != 5){
         printf("ERROR: Invalid number of arguments [%d]\n", argc);
@@ -45,13 +48,19 @@ int main(int argc, char ** argv){
     }
 
     // used to hold the file size
-    unsigned long long int file_size;
+    long long int file_size;
 
     // get the size of the requested file
     if(read(connected_socket, &file_size, sizeof(file_size)) < 0){
         printf("Error: Failed to receive file size from server\n");
         close(connected_socket);
         return -1;
+    }
+
+    // check if file exists on server side
+    if(file_size == DNE_FILE){
+        printf("File [%s] does not exist in the server\n", file_name.c_str());
+        return 0;
     }
 
     // buffer to incrementally store server response
@@ -105,4 +114,9 @@ int main(int argc, char ** argv){
 
     // close file
     out_file.close();
+
+    // indicate successful file copy
+    printf("File [%s] saved\n", file_name.c_str());
+    
+    return 0;
 }
