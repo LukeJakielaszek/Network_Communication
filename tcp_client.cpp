@@ -7,6 +7,7 @@
 
 using namespace std;
 
+// read size for socket
 const int BUFFSIZE = 1024;
 
 int main(int argc, char ** argv){
@@ -16,21 +17,39 @@ int main(int argc, char ** argv){
         return -1;
     }
 
+    // get init params from user
     string server_host = argv[1];
     string server_port = argv[2];
     string file_name = argv[3];
     string directory = argv[4];
 
-    int connected_socket = connect_to_server(atoi(server_port.c_str()), server_host.c_str());
+    // convert the port to an int
+    int port = atoi(server_port.c_str());
+    if(port < 0){
+        printf("ERROR: Invalid port detected [%d]\n", port);
+        return -1;
+    }
+
+    // connect to the server
+    int connected_socket = connect_to_server(port, server_host.c_str());
+    if(connected_socket < 0){
+        return -1;
+    }
 
     // send the file name
-    send(connected_socket , file_name.c_str(), file_name.size(), 0); 
-    printf("request message sent [%s]\n", file_name.c_str()); 
+    if(send(connected_socket , file_name.c_str(), file_name.size(), 0) < 0){
+        printf("ERROR: Failed to send server file [%s] request\n", file_name.c_str());
+        return -1;
+    }
 
+    // used to hold the file size
     unsigned long long int file_size;
-    read(connected_socket, &file_size, sizeof(file_size));
 
-    cout << "FILE SIZE [" << file_size << "]" << endl;
+    // get the size of the requested file
+    if(read(connected_socket, &file_size, sizeof(file_size)) < 0){
+        printf("Error: Failed to receive file size from server\n");
+        return -1;
+    }
 
     // buffer to incrementally store server response
     char buffer[BUFFSIZE];
@@ -47,9 +66,24 @@ int main(int argc, char ** argv){
         do{
             // receive file from the connected socket
             int valread = read(connected_socket, buffer, BUFFSIZE-1);
+            
+            // check if we can still successfully read from server
+            if(valread < 0){
+                printf("Error: Connection failed during file transmission\n");
+                return -1;
+            }
+
+            // add a null (used for printing while debugging)
             buffer[valread] = '\0';
-            printf("[%d] : [%s]\n", valread, buffer);
+
+            // write to the file
             out_file.write(buffer, valread);
+
+            // check for write success
+            if(!out_file.good()){
+                printf("ERROR: Failed to write transmitted contents to output\n");
+                return -1;
+            }
 
             // decrement the number of bytes left to read
             file_size -= valread;
@@ -59,6 +93,9 @@ int main(int argc, char ** argv){
         printf("ERROR: Failed to open [%s]\n", absolute_path.c_str());
     }
 
+    // close socket
     close(connected_socket);
+
+    // close file
     out_file.close();
 }
