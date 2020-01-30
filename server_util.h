@@ -14,6 +14,5 @@
 using namespace std;
 
 int getlistenfd(char *port);
-map<string, char*>& get_init_map();
 
 #endif /** SERVER_UTIL_H */

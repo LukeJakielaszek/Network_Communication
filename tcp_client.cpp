@@ -33,12 +33,14 @@ int main(int argc, char ** argv){
     // connect to the server
     int connected_socket = connect_to_server(port, server_host.c_str());
     if(connected_socket < 0){
+        printf("ERROR: Failed to make initial connection to server\n");
         return -1;
     }
 
     // send the file name
     if(send(connected_socket , file_name.c_str(), file_name.size(), 0) < 0){
         printf("ERROR: Failed to send server file [%s] request\n", file_name.c_str());
+        close(connected_socket);
         return -1;
     }
 
@@ -48,6 +50,7 @@ int main(int argc, char ** argv){
     // get the size of the requested file
     if(read(connected_socket, &file_size, sizeof(file_size)) < 0){
         printf("Error: Failed to receive file size from server\n");
+        close(connected_socket);
         return -1;
     }
 
@@ -70,6 +73,8 @@ int main(int argc, char ** argv){
             // check if we can still successfully read from server
             if(valread < 0){
                 printf("Error: Connection failed during file transmission\n");
+                close(connected_socket);
+                out_file.close();
                 return -1;
             }
 
@@ -82,6 +87,8 @@ int main(int argc, char ** argv){
             // check for write success
             if(!out_file.good()){
                 printf("ERROR: Failed to write transmitted contents to output\n");
+                close(connected_socket);
+                out_file.close();
                 return -1;
             }
 

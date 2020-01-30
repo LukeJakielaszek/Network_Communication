@@ -12,10 +12,25 @@
 
 using namespace std;
 
+// struct to act as cache
+// contents maps a file to its contents
+// sizes maps a file to its size
+// times maps a file to the last access time of that file
+// total size is the total size of the cache
+// NOTE: The cache is guarenteed to hold 60 MB of file contents, therefore
+// I only track the map content's char* size rather than the additional
+// overhead of the sizes, times, and total size data structures
 struct Cache{
+    // actual content of the file
     map<string, char*> *contents;
+
+    // size in bytes of each file
     map<string, int> *sizes;
+
+    // last access time of each file
     map<string, double> *times;
+
+    // total size of all fizes stored in cache
     int total_size;
 };
 
@@ -32,9 +47,9 @@ void remove_cache_file(string &file_name, Cache &cache);
 const int BUFFSIZE = 100;
 
 // set max size to 64 MB
-const int MAX_CACHE_SIZE = 64*1048576;
+const int MAX_CACHE_SIZE = 2000;//64*1048576;
 
-// start time of the program
+// start time of the program (used for LRU cache implementation)
 chrono::_V2::system_clock::time_point START_TIME;
 
 int main(int argc, char ** argv){
@@ -60,6 +75,7 @@ int main(int argc, char ** argv){
     // initialize the cache
     Cache *cache = init_cache();
 
+    // client information
     struct sockaddr_storage client_address;
     socklen_t client_size;
     char line[BUFFSIZE];
@@ -92,20 +108,28 @@ int main(int argc, char ** argv){
         if (getnameinfo((struct sockaddr*)&client_address, client_size,
                 clientName, BUFFSIZE, clientPort, BUFFSIZE, 0)!=0) {
             fprintf(stderr, "error getting name information about client\n");
+            continue;
         } else {
             printf("accepted connection from %s:%s\n", clientName, clientPort);
         }
 
-        // read from the current client
+        // read the initial request from the current client
         char buffer[1024];
         int valread = read(connectedfd, buffer, 1024);
+        if(valread < 0){
+            close(connectedfd);
+            printf("ERROR: Failed to read file request from client\n");
+            continue;
+        }
+
+        // add newline for easy string processing
         buffer[valread] = '\0';
-        printf("[%d] : [%s]\n", valread, buffer);
 
         // construct the absolute path to the file
         string file_delim = "/";
         string absolute_path = file_directory + file_delim + buffer;
 
+        // check if file is within cache
         if(!check_cache(buffer, *cache)){
             // file not within cache
 
@@ -134,8 +158,22 @@ int main(int argc, char ** argv){
 
                 // send DNE message to client
                 unsigned long long int response_size = message.size();
-                send(connectedfd, &response_size, sizeof(response_size), 0);
-                send(connectedfd, message.c_str(), message.size(), 0);
+
+                if(send(connectedfd, &response_size, sizeof(response_size), 0) < 0){
+                    printf("ERROR: Failed to send client size of DNE message\n");
+                    client_file.close();
+                    close(connectedfd);
+
+                    continue;
+                }
+
+                if(send(connectedfd, message.c_str(), message.size(), 0) < 0){
+                    printf("ERROR: Failed to send client DNE message\n");
+                    client_file.close();
+                    close(connectedfd);
+
+                    continue;
+                }
 
                 client_file.close();
                 close(connectedfd);
@@ -150,10 +188,25 @@ int main(int argc, char ** argv){
         auto content_iter = cache->contents->find(buffer);
         auto size_iter = cache->sizes->find(buffer);
 
+        if(content_iter == cache->contents->end() || size_iter == cache->sizes->end()){
+            printf("ERROR: Cache contents & sizes detected out of sync\n");
+            exit(-1);
+        }
+
         // send the file from cache
         unsigned long long int response_size = size_iter->second;
-        send(connectedfd, &response_size, sizeof(response_size), 0);
-        send(connectedfd, content_iter->second, size_iter->second, 0);
+        
+        // send the cached file's size to client
+        if(send(connectedfd, &response_size, sizeof(response_size), 0) < 0){
+            printf("ERROR: Failed to send cached file's size\n");
+            close(connectedfd);
+        }
+
+        // send the cached file contents to client        
+        if(send(connectedfd, content_iter->second, size_iter->second, 0) < 0){
+            printf("ERROR: Failed to send cached file's contents\n");
+            close(connectedfd);
+        }
 
         close(connectedfd);
     }
@@ -163,14 +216,30 @@ int main(int argc, char ** argv){
 bool send_from_disk(const int &client_socket, ifstream &client_file, string &absolute_path){
     cout << "Sending file directly from disk" << endl;
 
+    // get the total size of the file
     unsigned long long int response_size = get_file_size(client_file);
-    send(client_socket, &response_size, sizeof(response_size), 0);
 
+    // send client the size of file
+    if(send(client_socket, &response_size, sizeof(response_size), 0) < 0){
+        printf("ERROR: Failed to send client disk file size\n");
+        client_file.close();
+        close(client_socket);
+        
+        return false;
+    }
+
+    // send the client the file contents
     char buffer[BUFFSIZE];
     while(client_file){
         client_file.read(reinterpret_cast<char*>(&buffer), BUFFSIZE);
 
-        send(client_socket, buffer, client_file.gcount(), 0);
+        if(send(client_socket, buffer, client_file.gcount(), 0) < 0){
+            printf("ERROR: Failed to send client disk file contents");
+            client_file.close();
+            close(client_socket);
+
+            return false;
+        }
     }
 
     client_file.close();
@@ -181,6 +250,7 @@ bool send_from_disk(const int &client_socket, ifstream &client_file, string &abs
 
 // initialize cache components
 Cache* init_cache(){
+    // malloc the cache struct
     Cache *cache = reinterpret_cast<Cache*>(malloc(sizeof(Cache)));
     if(cache == NULL){
         cout << "ERROR: Failed to allocated Cache struct" << endl;
@@ -214,6 +284,7 @@ Cache* init_cache(){
         exit(-1);
     }
 
+    // initialize the cache size to empty
     cache->total_size = 0;
 
     // return the allocated cache
@@ -240,6 +311,11 @@ bool check_cache(const string &file_name, Cache &cache){
 
         // find and update the last used time
         auto time_iter = cache.times->find(file_name);
+        if(time_iter == cache.times->end()){
+            printf("ERROR: Failed to update cached file's [%s] time\n", file_name.c_str());
+            exit(-1);
+        }
+
         time_iter->second = cur_time;
 
         // if found, return true
@@ -271,50 +347,82 @@ bool update_cache(const string &file_name, ifstream &client_file, Cache &cache){
     // increment the total size of our cache
     cache.total_size+=file_size;
 
-    // insert the file size into cache
-    cache.sizes->insert(pair<string, int>(file_name, file_size));
+    try{
+        // insert the file size into cache
+        cache.sizes->insert(pair<string, int>(file_name, file_size));
+    }catch(bad_alloc &){
+        printf("ERROR: Unable to insert new file size into cache\n");
+        exit(-1);
+    }
 
     // read file contents
     char * cache_buf = (char*)malloc(sizeof(char)*file_size);
+    if(cache_buf == NULL){
+        printf("ERROR: Failed to allocate buffer for file reading\n");
+        exit(-1);
+    }
+
     client_file.read(reinterpret_cast<char*>(cache_buf), file_size);
+    if(!client_file.good()){
+        printf("ERROR: Failed to read file for cacheing\n");
+        exit(-1);
+    }
 
-    // insert the file contents into cache
-    cache.contents->insert(pair<string, char*>(file_name, cache_buf));    
+    try{
+        // insert the file contents into cache
+        cache.contents->insert(pair<string, char*>(file_name, cache_buf));
+    }catch(bad_alloc &){
+        printf("ERROR: Failed to insert new file contents into cache\n");
+        exit(-1);
+    }
 
-    // insert check time for file
+    // get check time for file
     auto check_time = chrono::high_resolution_clock::now();
 
 	// cast the total execution time to milliseconds
 	double cur_time = chrono::duration_cast<chrono::milliseconds>(check_time-START_TIME).count();
 
-    // insert the last used time
-    cache.times->insert(pair<string, double>(file_name, cur_time));
+    try{
+        // insert the last used time
+        cache.times->insert(pair<string, double>(file_name, cur_time));
+    }catch(bad_alloc &){
+        printf("ERROR: Failed to insert/update new file cache time into cache\n");
+        exit(-1);
+    }
 
     // notify of successful update
     return true;
 }
 
-// remove files from cache according to least recently used
+// remove files from cache according to least recently used policy
 int make_room_LRU(Cache &cache, int client_file_size){
     // vectors to track our key / value mapping
     vector<string> keys;
     vector<double> vals;
-
-    // initialize our vectors with keys and values
-    for(auto time_iter = cache.times->begin(); time_iter != cache.times->end(); ++time_iter){
-        keys.push_back(time_iter->first);
-        vals.push_back(time_iter->second);
-    }
-
-    // get the number of elements in the cache
-    int num_keys = keys.size();
-
+    
     // used to track our key/value pairs during sort
     vector<pair<double, string>> pairs;
 
-    // add all key/value pairs to our pair vector
-    for(int i = 0; i < num_keys; ++i){
-        pairs.push_back(make_pair(vals[i], keys[i]));
+    // number of keys in our map
+    int num_keys;
+    
+    try{
+        // initialize our vectors with keys and values
+        for(auto time_iter = cache.times->begin(); time_iter != cache.times->end(); ++time_iter){
+            keys.push_back(time_iter->first);
+            vals.push_back(time_iter->second);
+        }
+
+        // get the number of elements in the cache
+        num_keys = keys.size();
+
+        // add all key/value pairs to our pair vector
+        for(int i = 0; i < num_keys; ++i){
+            pairs.push_back(make_pair(vals[i], keys[i]));
+        }
+    }catch(bad_alloc &){
+        printf("ERROR: Failed to obtain all key/value pairs\n");
+        exit(-1);
     }
 
     // sort in ascending order by first element of pair (time)
@@ -337,10 +445,16 @@ int make_room_LRU(Cache &cache, int client_file_size){
         // find the file
         auto iter = cache.sizes->find(pairs[i].second);
 
+        // ensure maps are synchronized in keys
+        if(iter == cache.sizes->end()){
+            printf("ERROR: Cache Sizes map does not contain cached file key [%s]\n", pairs[i].second.c_str());
+            exit(-1);
+        }
+
         // decrement the total size needed
         size_needed -= iter->second;
 
-        //remove the file from cache
+        // remove the file from cache
         remove_cache_file(pairs[i].second, cache);
     }
 
@@ -349,17 +463,28 @@ int make_room_LRU(Cache &cache, int client_file_size){
 
 // removes a file completely from cache
 void remove_cache_file(string &file_name, Cache &cache){
-    // remove the size
+    // find the value for each map using our key
     auto size_it = cache.sizes->find(file_name);
+    auto time_it = cache.times->find(file_name);
+    auto content_it = cache.contents->find(file_name);
+    
+    // ensure all maps contain the key
+    if(size_it == cache.sizes->end() || time_it == cache.times->end() || content_it == cache.contents->end()){
+        printf("ERROR: Unable to remove file from cache. Cache maps are out of synch\n");
+        exit(-1);
+    }
+
+    // remove the size
     cache.total_size -= size_it->second;
     cache.sizes->erase(size_it);
 
     // remove the time
-    auto time_it = cache.times->find(file_name);
     cache.times->erase(time_it);
 
+    // free the contents array
+    free(content_it->second);
+
     // remove the contents
-    auto content_it = cache.contents->find(file_name);
     cache.contents->erase(content_it);
 }
 
@@ -376,6 +501,12 @@ int get_file_size(ifstream &client_file){
 
     // seek to the start of the file
     client_file.seekg(0, ios::beg);
+
+    // ensure file successfully reset
+    if(!client_file.good()){
+        printf("ERROR: Failed to reset file stream's status\n");
+        exit(-1);
+    }
 
     // return the size of the file
     return size;
